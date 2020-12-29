@@ -1,1 +1,1 @@
-# sample_state_transition_without_branch
+### 状態遷移を含むロジックの実装サンプル（分岐ロジックはできるだけ排除）
