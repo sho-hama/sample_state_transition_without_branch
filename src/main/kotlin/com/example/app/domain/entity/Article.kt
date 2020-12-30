@@ -1,10 +1,10 @@
 package com.example.app.domain.entity
 
-
 import com.example.app.request.ArticleCreateRequest
 import java.io.Serializable
 import java.time.LocalDateTime
 import javax.persistence.*
+import org.slf4j.LoggerFactory
 
 @Entity
 @Table(name = "article")
@@ -41,6 +41,51 @@ data class Article (
             publisherId = articleCreateRequest.publisherId,
             reviewerId = articleCreateRequest.reviewerId
     )
+
+    companion object {
+        private var nextStatus: MutableMap<Pair<ArticleStatus, Event>, ArticleStatus> = mutableMapOf()
+        private val log = LoggerFactory.getLogger(Article::class.java)
+    }
+
+    init {
+        nextStatus[Pair(ArticleStatus.UNDER_EXAMINATION, Event.APPROVE)]   = ArticleStatus.APPROVED
+        nextStatus[Pair(ArticleStatus.UNDER_EXAMINATION, Event.SEND_BACK)] = ArticleStatus.SEND_BACK
+        nextStatus[Pair(ArticleStatus.APPROVED, Event.PUBLISH)]            = ArticleStatus.NOW_PUBLIC
+        nextStatus[Pair(ArticleStatus.APPROVED, Event.WITHDRAW)]           = ArticleStatus.WITHDRAWAL
+        nextStatus[Pair(ArticleStatus.SEND_BACK, Event.EXAMINE)]           = ArticleStatus.UNDER_EXAMINATION
+        nextStatus[Pair(ArticleStatus.SEND_BACK, Event.WITHDRAW)]          = ArticleStatus.WITHDRAWAL
+        nextStatus[Pair(ArticleStatus.NOW_PUBLIC, Event.WITHDRAW)]         = ArticleStatus.WITHDRAWAL
+    }
+
+    private fun getNextStatus(nowStatus: ArticleStatus, event: Event) : ArticleStatus? {
+        return nextStatus[Pair(nowStatus, event)]
+    }
+
+    fun transitStatus(event : Event) : Article? {
+        ArticleStatus.fromCodeToStatus(this.status)?.let { oldStatus ->
+            this.status = getNextStatus(oldStatus, event)?.code ?: run {
+                log.warn("Invalid event")
+                return null
+            }
+            return this
+        }
+        log.warn("Invalid article status")
+        return null
+    }
+
+    fun setPublishPeriod(publishStartTime : LocalDateTime, publishEndTime: LocalDateTime) {
+        this.publishStartTime = publishStartTime
+        this.publishEndTime = publishEndTime
+    }
+}
+
+
+enum class Event {
+    APPROVE,
+    SEND_BACK,
+    EXAMINE,
+    PUBLISH,
+    WITHDRAW
 }
 
 enum class ArticleStatus(val code: Byte) {
@@ -49,10 +94,9 @@ enum class ArticleStatus(val code: Byte) {
     SEND_BACK(3),
     WITHDRAWAL(4),
     NOW_PUBLIC(5);
-
     companion object {
         fun fromCodeToStatus(statusCode : Byte) : ArticleStatus? {
-            return values().firstOrNull {it.code == statusCode}
+            return values().firstOrNull { it.code == statusCode }
         }
     }
 }
